@@ -1,68 +1,116 @@
 #! /bin/bash
 
+PROG="$0"
+
 show_help() {
-  echo "parameter 01: name of the application"
-  echo "parameter 02: version of the SDK"
-  echo "parameter 03: make target"
+  SEP='" ) # '
+  MARK_BEGIN="PARAMETER_BEGIN"
+  MARK_END="PARAMETER_END"
+  HELP="$(grep -A 999 "${MARK_BEGIN}" "${PROG}" | grep -B 999 "${MARK_END}")"
+  HELP="$(echo "${HELP}" | grep "${SEP}")"
+  echo "${HELP}" | while read LINE; do
+    echo "Parameter: ${LINE/\"/}" | sed "s:${SEP}::g"
+  done
 }
 
-check_param() {
-  echo "check parameter: ${1}"
-  if [ -z ${1} ]; then
-    show_help
-    exit
-  fi
+# PARAMETER_BEGIN
+parse_param() {
+  while [ ! -z ${1} ]; do
+    case "${1}" in
+      "--help" ) #           Show a little help
+	show_help
+	exit
+	;;
+      "--app" ) #            Set the application name to the next argument
+	shift
+	APP="${1}"
+	;;
+      "--pkg-file" ) #       Use the next argument as pkg file
+	shift
+	PKG_FILE="${1}"
+	;;
+      "--sdk-version" ) #    Use the given SDK version
+	shift
+	SDK_VERSION="${1}"
+	;;
+      "--make-target" ) #    The name of the make target (all, clean)
+	shift
+	MAKE_TARGET="${1}"
+	;;
+      "--sis-file" ) #       The sis filename
+	shift
+	SISFILE="${1}"
+	;;
+      "--sisx-file" ) #      The sisx filename
+	shift
+	SISXFILE="${1}"
+	;;
+      "--cer-file" ) #       The name of the certification file
+	shift
+	CERFILE="${1}"
+	;;
+      "--key-file" ) #       The name of the key file
+	shift
+	KEYFILE="${1}"
+	;;
+      "--sign-pwd" ) #       The sign password
+	shift
+	SIGNPWD="${1}"
+	;;
+      * )
+	echo "parameter ${1} not implemented"
+	exit
+	;;
+    esac
+    shift
+  done
 }
+# PARAMETER_END
 
 call_cmd() {
   echo "$*"
   $@
 }
 
-check_param $@
-APP="${1}"
-echo "application: [${APP}]"
-shift
+parse_param $@
 
-check_param $@
-SDK_VERSION="${1}"
-echo "SDK version: [${SDK_VERSION}]"
-shift
+#
+# Print the current configuration and
+# set default parameter values if not yet set.
+#
+echo "app:          ${APP="test"}"
+echo "pgk file:     ${PKG_FILE="${APP}.pkg"}"
+echo "sdk version:  ${SDK_VERSION="5.0"}"
+echo "make target:  ${MAKE_TARGET="all"}"
+echo "sis file:     ${SISFILE="${APP}.sis"}"
+echo "sisx file:    ${SISXFILE="${APP}.sisx"}"
+echo "cert file:    ${CERFILE="mycert.cer"}"
+echo "key file:     ${KEYFILE="mykey.key"}"
+echo "sign pwd:     ${SIGNPWD="0000"}"
 
-check_param $@
-MAKE_TARGET="${1}"
-echo "make target: [${MAKE_TARGET}]"
+exit
 
 case "${SDK_VERSION}" in
   "5.0" )
     PLATFORM="gcce"
     TARGET="urel"
-    SISFILE="${APP}.sis"
-    SISXFILE="${APP}.sisx"
-    PKGFILE="${APP}.pkg"
-    CERFILE="mycert.cer"
-    KEYFILE="mykey.key"
-    SIGNPWD="0000"
+    DO_SIGN="true"
     ;;
   "3.2" )
-	  PLATFORM="gcce"
-	  TARGET="urel"
-    SISFILE="${APP}.sis"
-    SISXFILE="${APP}.sisx"
-    PKGFILE="${APP}.pkg"
-    CERFILE="mycert.cer"
-    KEYFILE="mykey.key"
-    SIGNPWD="0000"
-	  ;;
-  "2.0" )
-	  PLATFORM="armi"
-	  TARGET="urel"
-    PKGFILE="${APP}.pkg"
+    PLATFORM="gcce"
+    TARGET="urel"
+    DO_SIGN="true"
     ;;
-	* )
-	 echo "TBD"
-	 exit
-	 ;;
+  "2.0" )
+    PLATFORM="armi"
+    TARGET="urel"
+    DO_SIGN="false"
+    ;;
+  * )
+    PLATFORM="gcce"
+    TARGET="urel"
+    DO_SIGN="true"
+    ;;
 esac
 
 export PATH=${HOME}/symbian/gnupoc/bin:${PATH}
@@ -81,34 +129,20 @@ case ${MAKE_TARGET} in
     call_cmd abld build ${PLATFORM} ${TARGET}
     cd ..	
 	
-	  cd sis
-    PKGFILE_TMP=__${PKGFILE}
-    cp ${PKGFILE} ${PKGFILE_TMP}
+    cd sis
+    PKG_FILE_TMP=__${PKG_FILE}
+    cp ${PKG_FILE} ${PKG_FILE_TMP}
     	  
-    sed s:'$(EPOCROOT)':${EPOCROOT}:g -i ${PKGFILE_TMP}
-    sed s:'$(PLATFORM)':${PLATFORM}:g -i ${PKGFILE_TMP}
-    sed s:'$(TARGET)':${TARGET}:g -i ${PKGFILE_TMP}
-    sed s:Epoc32:epoc32:g -i ${PKGFILE_TMP}
-	
-	  case "${SDK_VERSION}" in
-	    "5.0" ) ##### S60 5th
-        call_cmd makesis ${PKGFILE_TMP} ${SISFILE}
-        call_cmd signsis -p ${SISFILE} ${SISXFILE} ${CERFILE} ${KEYFILE} ${SIGNPWD}
-        ;;
-	    "3.2" ) ##### S60 3rd
-        call_cmd makesis ${PKGFILE_TMP} ${SISFILE}
-        call_cmd signsis -p ${SISFILE} ${SISXFILE} ${CERFILE} ${KEYFILE} ${SIGNPWD}
-		    ;;
-      "2.0" ) ##### S60 2nd	    
-	      echo "makesis ${PKGFILE_TMP}"
-	      makesis ${PKGFILE_TMP}
-	      ;;
-	    * )
-	      echo "TBD"
-	      ;;
-	  esac
+    sed s:'$(EPOCROOT)':${EPOCROOT}:g -i ${PKG_FILE_TMP}
+    sed s:'$(PLATFORM)':${PLATFORM}:g -i ${PKG_FILE_TMP}
+    sed s:'$(TARGET)':${TARGET}:g -i ${PKG_FILE_TMP}
+    sed s:Epoc32:epoc32:g -i ${PKG_FILE_TMP}
 
-    rm ${PKGFILE_TMP}
+    call_cmd makesis ${PKG_FILE_TMP} ${SISFILE}
+    ${DO_SIGN} && call_cmd signsis -p ${SISFILE} ${SISXFILE} ${CERFILE} ${KEYFILE} ${SIGNPWD}
+
+    rm ${PKG_FILE_TMP}
+    cd ..
     ;;
 
   clean)
